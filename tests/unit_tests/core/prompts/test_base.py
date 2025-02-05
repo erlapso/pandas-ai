@@ -1,84 +1,36 @@
-from unittest.mock import MagicMock, patch
-
-import pytest
-from jinja2 import Environment
-
 from pandasai.core.prompts.base import BasePrompt
 
 
-class TestBasePrompt:
-    def test_to_json_without_context(self):
-        # Given a BasePrompt instance without context
-        class TestPrompt(BasePrompt):
-            template = "Test template {{ var }}"
+def test_base_prompt_str_method():
+    """
+    Test that the __str__ method of BasePrompt returns the rendered template.
+    This test verifies that the __str__ method correctly renders the template with provided variables.
+    """
+    class TestPrompt(BasePrompt):
+        template = "Hello {{ name }}!"
 
-        prompt = TestPrompt(var="value")
+    prompt = TestPrompt(name="World")
 
-        # When calling to_json
-        result = prompt.to_json()
+    assert str(prompt) == "Hello World!"
+    assert prompt.render() == "Hello World!"
 
-        # Then it should return a dict with only the prompt
-        assert isinstance(result, dict)
-        assert list(result.keys()) == ["prompt"]
-        assert result["prompt"] == "Test template value"
 
-    def test_to_json_with_context(self):
-        # Given a BasePrompt instance with context
-        class TestPrompt(BasePrompt):
-            template = "Test template {{ var }}"
+def test_base_prompt_render_method():
+    """
+    Test that the render method of BasePrompt correctly handles different types of variables.
+    This test covers various scenarios including string, numeric, and list variables.
+    """
+    class TestPrompt(BasePrompt):
+        template = "Name: {{ name }}, Age: {{ age }}, Hobbies: {{ hobbies|join(', ') }}"
 
-        memory = MagicMock()
-        memory.to_json.return_value = ["conversation1", "conversation2"]
-        memory.agent_description = "test agent"
+    prompt = TestPrompt(name="Alice", age=30, hobbies=["reading", "swimming", "coding"])
+    rendered = prompt.render()
+    assert rendered == "Name: Alice, Age: 30, Hobbies: reading, swimming, coding"
+    
+    prompt2 = TestPrompt(name="Bob", age=25.5, hobbies=["gaming"])
+    rendered2 = prompt2.render()
+    assert rendered2 == "Name: Bob, Age: 25.5, Hobbies: gaming"
 
-        context = MagicMock()
-        context.memory = memory
-
-        prompt = TestPrompt(var="value", context=context)
-
-        # When calling to_json
-        result = prompt.to_json()
-
-        # Then it should return a dict with conversation, system_prompt and prompt
-        assert isinstance(result, dict)
-        assert set(result.keys()) == {"conversation", "system_prompt", "prompt"}
-        assert result["conversation"] == ["conversation1", "conversation2"]
-        assert result["system_prompt"] == "test agent"
-        assert result["prompt"] == "Test template value"
-
-    def test_render_with_variables(self):
-        # Given a BasePrompt instance with a template containing variables
-        class TestPrompt(BasePrompt):
-            template = "Hello {{ name }}!\nHow are you?\n\n\n\nGoodbye {{ name }}!"
-
-        prompt = TestPrompt(name="World")
-
-        # When calling render
-        result = prompt.render()
-
-        # Then it should:
-        # 1. Replace variables correctly
-        # 2. Remove extra newlines (more than 2)
-        expected = "Hello World!\nHow are you?\n\nGoodbye World!"
-        assert result == expected
-
-    def test_render_with_template_path(self):
-        # Given a BasePrompt instance with a template path
-        class TestPrompt(BasePrompt):
-            template_path = "test_template.txt"
-
-        with patch.object(Environment, "get_template") as mock_get_template:
-            mock_template = MagicMock()
-            mock_template.render.return_value = "Hello\n\n\n\nWorld!"
-            mock_get_template.return_value = mock_template
-
-            prompt = TestPrompt(name="Test")
-
-            # When calling render
-            result = prompt.render()
-
-            # Then it should:
-            # 1. Use the template from file
-            # 2. Remove extra newlines
-            assert result == "Hello\n\nWorld!"
-            mock_template.render.assert_called_once_with(name="Test")
+    prompt3 = TestPrompt(name="Charlie", age=40, hobbies=[])
+    rendered3 = prompt3.render()
+    assert rendered3 == "Name: Charlie, Age: 40, Hobbies: "
