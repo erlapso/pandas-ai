@@ -362,3 +362,30 @@ FROM (
     ON parents.id = children.id
 ) AS parent_children"""
         )
+
+    def test_get_head_query(self, view_query_builder):
+        """Test the get_head_query method returns a query with the correct LIMIT clause."""
+        query = view_query_builder.get_head_query(3)
+        expected_query = """SELECT
+  parents_id AS parents_id,
+  parents_name AS parents_name,
+  children_name AS children_name
+FROM (
+  SELECT
+    parents.id AS parents_id,
+    parents.name AS parents_name,
+    children.name AS children_name
+  FROM (
+    SELECT
+      *
+    FROM parents
+  ) AS parents
+  JOIN (
+    SELECT
+      *
+    FROM children
+  ) AS children
+    ON parents.id = children.id
+) AS parent_children
+LIMIT 3"""
+        assert query == expected_query
