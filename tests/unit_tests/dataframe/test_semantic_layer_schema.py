@@ -160,7 +160,21 @@ class TestSemanticLayerSchema:
         with pytest.raises(ValidationError):
             SemanticLayerSchema(**raw_mysql_view_schema)
 
-    def test_invalid_wrong_column_format(self, raw_sample_schema):
+    def test_invalid_uncovered_columns_in_view(self, raw_mysql_view_schema):
+        """Test that a view with uncovered tables in the columns (i.e. missing relations for some tables) raises a ValueError."""
+        # Force the schema to have multiple tables in columns by ensuring relations are empty
+        raw_mysql_view_schema["relations"] = []
+        with pytest.raises(ValueError, match="No relations provided for the following tables"):
+            SemanticLayerSchema(**raw_mysql_view_schema)
+    
+    def test_invalid_rename_missing_new_name(self, raw_sample_schema):
+        """Test that a rename transformation without 'new_name' parameter raises a ValidationError."""
+        transformation_data = {
+            "type": "rename",
+            "params": {"column": "username"}  # Note: missing 'new_name'
+        }
+        with pytest.raises(ValidationError):
+            Transformation(**transformation_data)
         raw_sample_schema["columns"][0]["name"] = "parents.id"
 
         with pytest.raises(ValidationError):
@@ -172,8 +186,44 @@ class TestSemanticLayerSchema:
         with pytest.raises(ValidationError):
             SemanticLayerSchema(**raw_mysql_view_schema)
 
-    def test_invalid_uncovered_columns_in_view(self, raw_mysql_view_schema):
+    def test_invalid_group_by_missing_columns(self, raw_sample_schema, raw_mysql_view_schema):
+        """Test that the schema fails when group_by is provided but not all non-aggregated columns are included."""
+        # Assume raw_sample_schema is a valid table schema with columns that do not have an aggregation expression.
+        # Setting group_by with only the first column, leaving the others unmatched.
+        raw_sample_schema["group_by"] = [raw_sample_schema["columns"][0]["name"]]
+        with pytest.raises(ValidationError):
+            SemanticLayerSchema(**raw_sample_schema)
         raw_mysql_view_schema["relations"][0]["to"] = "parents.id"
 
         with pytest.raises(ValidationError):
             SemanticLayerSchema(**raw_mysql_view_schema)
+
+    def test_sql_connection_config_equality(self):
+        """Test that SQLConnectionConfig equality works correctly."""
+        from pandasai.data_loader.semantic_layer_schema import SQLConnectionConfig
+        config1 = SQLConnectionConfig(host="localhost", port=3306, database="test_db", user="user", password="pass")
+        config2 = SQLConnectionConfig(host="localhost", port=3306, database="test_db", user="user", password="pass")
+        config3 = SQLConnectionConfig(host="localhost", port=3306, database="test_db", user="user", password="different")
+        assert config1 == config2
+        assert config1 != config3
+    def test_to_dict_and_to_yaml(self, raw_sample_schema):
+        """Test that the schema's to_dict and to_yaml methods produce correct outputs without None values."""
+        schema = SemanticLayerSchema(**raw_sample_schema)
+        schema_dict = schema.to_dict()
+        yaml_output = schema.to_yaml()
+        # Ensure that dictionary output does not include None values
+        for key, value in schema_dict.items():
+            assert value is not None
+        # Check that the YAML output contains some expected key (e.g., 'name')
+        assert "name:" in yaml_output
+        # Verify that loading the YAML output produces the same dictionary
+        import yaml
+        loaded_yaml = yaml.safe_load(yaml_output)
+        assert loaded_yaml == schema_dict
+    def test_invalid_view_format_in_table(self, raw_sample_schema):
+        """Test that a table schema with view-formatted column names raises an error."""
+        # Modify raw_sample_schema columns to use view format (e.g., "dataset.column") even though this is a table schema
+        for col in raw_sample_schema["columns"]:
+            col["name"] = f"dataset.{col['name']}"
+        with pytest.raises(ValidationError, match="All columns in a table must be in the format '\\[column\\]'."):
+            SemanticLayerSchema(**raw_sample_schema)
